@@ -26,6 +26,8 @@ Trails are usually updated when all ants have completed their solution, increasi
 ![image](https://github.com/Theod0reWu/Parallel-Ant-Colony-System/assets/43049406/d66ba134-3fb8-4943-99c6-ee5a73c43174) 
 <br>
 ![image](https://github.com/Theod0reWu/Parallel-Ant-Colony-System/assets/43049406/7ae78bf3-9d1d-445d-90a6-11ef07d9a0df)
+<br>
+(Source: Wikipedia)
 
 
 
