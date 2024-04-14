@@ -5,13 +5,7 @@
 #include<stdbool.h>
 
 int main(int argc, char** argv) {
-
-	//create local storage for top and bottom rows
-	g_above_row = calloc( worldSize,sizeof(unsigned char));
-	g_below_row = calloc( worldSize,sizeof(unsigned char));
-	unsigned char * next_above_row = calloc( worldSize,sizeof(unsigned char));
-	unsigned char * next_below_row = calloc( worldSize,sizeof(unsigned char));
-
+	// MPI STUFF 
 	// setput MPI
 	MPI_Init(&argc, &argv);
 
@@ -23,14 +17,18 @@ int main(int argc, char** argv) {
 	int myrank;
 	MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
 
-	int block_count = (worldSize * worldSize) / thread_count;
-
-	HL_initMaster(pattern,worldSize, worldSize, myrank);
-
 	double t0, t1;
 	if(myrank == 0){
 		t0 = MPI_Wtime();
 	}
+
+	// set up colonies (create ants, init pheromone trails)
+
+	// set up MPI reception buffer for processing asynchronous communication
+
+	// execution loop (cuda for processing), MPI for communicating best solutions
+
+
 
 	// Finalize the MPI environment.
 	MPI_Finalize();
