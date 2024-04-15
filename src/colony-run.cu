@@ -65,7 +65,7 @@ int main(void)
 
 
 // sets up the devices and runs
-extern "C" void setup_and_run(int myrank, grid_size, thread_count)
+extern "C" void setup_and_run(int myrank, grid_size, int thread_count)
 {
     // Set device to the rank
     int cudaDeviceCount;
