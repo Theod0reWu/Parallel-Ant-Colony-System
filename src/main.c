@@ -4,6 +4,12 @@
 #include<unistd.h>
 #include<stdbool.h>
 
+double * create_colonies(int num_colonies, int ants_per_colony)
+{	
+	
+	return 0;
+}
+
 int main(int argc, char** argv) {
 	// MPI STUFF 
 	// setput MPI
@@ -21,6 +27,22 @@ int main(int argc, char** argv) {
 	if(myrank == 0){
 		t0 = MPI_Wtime();
 	}
+
+	// extract parameters
+	if (argc != 5)
+	{
+		printf("Incorrect number of provided parameters. use -$ <number of colonies> <total ants> <iterations> <thread_count> \n");
+		return 0;
+	}
+	unsigned int colonies = 0;
+	unsigned int total_ants = 0;
+	unsigned int iterations = 0;
+	unsigned int thread_count = 0;
+
+	colonies = atoi(argv[1]);
+	total_ants = atoi(argv[2]);
+	iterations = atoi(argv[3]);
+	thread_count = atoi(argv[4]);
 
 	// set up colonies (create ants, init pheromone trails)
 
