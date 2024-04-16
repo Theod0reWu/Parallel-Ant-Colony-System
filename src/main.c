@@ -7,12 +7,13 @@
 #include <errno.h>
 #include <string.h>
 
-int ** SEND_BUF = NULL;
-int ** RECV_BUF = NULL;
+int * SEND_BUF = NULL;
+int * RECV_BUF = NULL;
 
 // external cuda functions
-void freeCudaGlobal();
+oid freeCudaGlobal(int num_ants);
 void setup_probelm_tsp(int myrank, int grid_size, int thread_count, double ** nodes, size_t num_coords);
+void colony_kernel_launch(size_t num_nodes, size_t num_ants, int block_count, int thread_count);
 
 // Creates array of coordinates from file. 
 // File should consist of comma separated values x,y per line per coordinates. No more than 128 characters per line
@@ -130,20 +131,30 @@ int main(int argc, char** argv) {
 	printf("%i | %lu | (%f, %f)\n", myrank, num_coords, coords[1][0], coords[1][1]);
 
 	// set up colony for this process (create ants, init pheromone trails)
-	setup_probelm_tsp(myrank, (total_ants / colonies + thread_count - 1) / thread_count, thread_count, coords,  num_coords);
+	int ants_per_colony = (total_ants + colonies - 1) / colonies;
+	setup_probelm_tsp(myrank, (ants_per_colony + thread_count - 1) / thread_count, thread_count, coords,  num_coords);
 
 	// set up MPI reception buffer for processing asynchronous communication
-	MPI_Irecv(, worldSize, MPI_CHAR, aboveRank, 'A', MPI_COMM_WORLD, &recv_request_above);
+	RECV_BUF = malloc(num_coords * sizeof(size_t));
+	SEND_BUF = malloc(num_coords * sizeof(size_t));
+	MPI_Request recv_request;
+	MPI_Irecv(RECV_BUF, num_coords, MPI_UNSIGNED_LONG, MPI_ANY_SOURCE,  MPI_ANY_TAG, MPI_COMM_WORLD, &recv_request);
 
 	// execution loop (cuda for processing), MPI for communicating best solutions
+	for (int i = 0; i < iterations; ++i)
+	{
+		
+	}
 
 	// free memory
 	free(coords[0]);
 	free(coords[1]);
 	free(coords);
+	free(RECV_BUF);
+	free(SEND_BUF);
 
 	// free cuda memory
-	freeCudaGlobal();
+	freeCudaGlobal(ants_per_colony);
 
 	// Finalize the MPI environment.
 	MPI_Finalize();
