@@ -7,11 +7,12 @@
 #include <errno.h>
 #include <string.h>
 
-double * create_colonies(int num_colonies, int ants_per_colony)
-{	
+int ** SEND_BUF = NULL;
+int ** RECV_BUF = NULL;
 
-	return NULL;
-}
+// external cuda functions
+void freeCudaGlobal();
+void setup_probelm_tsp(int myrank, int grid_size, int thread_count, double ** nodes, size_t num_coords);
 
 // Creates array of coordinates from file. 
 // File should consist of comma separated values x,y per line per coordinates. No more than 128 characters per line
@@ -126,12 +127,13 @@ int main(int argc, char** argv) {
 	MPI_Bcast(coords[1], num_coords, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 	MPI_Barrier(MPI_COMM_WORLD);
 
-	printf("%i | %lu | (%i, %i)\n", myrank, num_coords, coords[0], coords[0]);
+	printf("%i | %lu | (%f, %f)\n", myrank, num_coords, coords[1][0], coords[1][1]);
 
-	// set up colonies (create ants, init pheromone trails)
+	// set up colony for this process (create ants, init pheromone trails)
+	setup_probelm_tsp(myrank, (total_ants / colonies + thread_count - 1) / thread_count, thread_count, coords,  num_coords);
 
-	
 	// set up MPI reception buffer for processing asynchronous communication
+	MPI_Irecv(, worldSize, MPI_CHAR, aboveRank, 'A', MPI_COMM_WORLD, &recv_request_above);
 
 	// execution loop (cuda for processing), MPI for communicating best solutions
 
@@ -139,6 +141,9 @@ int main(int argc, char** argv) {
 	free(coords[0]);
 	free(coords[1]);
 	free(coords);
+
+	// free cuda memory
+	freeCudaGlobal();
 
 	// Finalize the MPI environment.
 	MPI_Finalize();

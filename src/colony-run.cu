@@ -13,11 +13,24 @@
 #include <time.h>
 #include <stdlib.h>
 
+curandState* DEVSTATES;
+
+double ** EDGE_WEIGHTS;
+
+double ** PHER_TRAILS;
+
+extern int ** SEND_BUF;
+
+extern int ** RECV_BUF;
+
+double BEST_SCORE = 0;
+
+size_t NUM_NODES;
 
 __device__ float generate(curandState* globalState, int ind)
 {
-    //int ind = threadIdx.x;
-    curandState localState = globalState[ind];
+    // int ind = threadIdx.x;
+    curandState localState = globalState[ind %  blockDim.x];
     float RANDOM = curand_uniform( &localState );
     globalState[ind] = localState;
     return RANDOM;
@@ -26,7 +39,7 @@ __device__ float generate(curandState* globalState, int ind)
 __global__ void setup_kernel ( curandState * state, unsigned long seed )
 {
     int id = threadIdx.x;
-    curand_init ( seed, id, 0, &state[id] );
+    curand_init ( seed + id, id, 0, &state[id] );
 }
 
 __global__ void addToCount(int N, int *y, curandState* globalState)
@@ -63,9 +76,33 @@ int main(void)
   printf("%i\n", *y);
 }
 
+double ** create_adj_matrix(int num_nodes)
+{
+    double **  m = cudaMalloc(num_nodes * sizeof(double*));
+    for (int i = 0; i < num_nodes; ++i)
+    {
+        m[i] = (double *) cudaMalloc(num_nodes * sizeof(double));
+    }
+    return m;
+}
+
+double ** create_edge_weights_tsp(double ** nodes, int num_nodes)
+{   
+    double **  weights = create_adj_matrix(num_nodes);
+
+    for (int y = 0; y < num_nodes; ++y)
+    {
+        for (int x = 0; x < num_nodes; ++x)
+        {
+            weights[y][x] = 1 / pow(pow(nodes[x][0] - nodes[y][0], 2) + pow(nodes[x][0] - nodes[y][0], 2), .5);
+        }
+    }
+    return weights;
+}
+
 
 // sets up the devices and runs
-extern "C" void setup_and_run(int myrank, grid_size, int thread_count)
+extern "C" void setup_probelm_tsp(int myrank, int grid_size, int thread_count, double ** nodes, size_t num_coords)
 {
     // Set device to the rank
     int cudaDeviceCount;
@@ -80,6 +117,16 @@ extern "C" void setup_and_run(int myrank, grid_size, int thread_count)
         printf(" Unable to have myrank %d set to cuda device %d, error is %d \n", myrank, (myrank % cudaDeviceCount), cE);
         exit(-1); 
     }
+
+    // setup random number generators
+    cudaMalloc (&DEVSTATES, thread_count * sizeof(curandState));
+    srand(time(0));
+    int seed = rand() + myrank;
+    setup_kernel<<<grid_size, thread_count>>>(DEVSTATES,seed);
+
+    EDGE_WEIGHTS = create_edge_weights_tsp(nodes, num_coords);
+    PHER_TRAILS = create_adj_matrix(num_coords);
+    NUM_NODES = num_coords;
 }
 
 // copy memory from device to host
@@ -94,16 +141,32 @@ extern "C" void host_to_device(double * host_pointer, double * device_pointer, u
     cudaMemcpy(device_pointer, host_pointer, size, cudaMemcpyHostToDevice);
 }
 
-extern "C" void colony_kernelLaunch( unsigned char** d_data, unsigned char** d_resultData, 
-        int block_count, int thread_count, 
-        unsigned int worldWidth, unsigned int worldHeight, 
-        int myrank){
+// each thread will run an ant
+__global__ void colony_kernel(size_t num_ants)
+{
+    size_t index = blockIdx.x * blockDim.x + threadIdx.x;
+
+    for (; index < num_ants; index += blockDim.x)
+    {
+        size_t visited[NUM_NODES];
+
+    }
+}
+
+extern "C" void colony_kernel_launch(int block_count, int thread_count){
 
     // Call the kernel
-    // HL_kernel<<<block_count,thread_count>>>(*d_data, *d_resultData, worldWidth, worldHeight);
+    colony_kernel<<<block_count,thread_count>>>(*d_data, *d_resultData, worldWidth, worldHeight);
     cudaDeviceSynchronize();
 }
 
+extern "C" void freeCudaGlocal(){
+    for (int y = 0; y < num_nodes; ++y)
+    {
+        cudaFree(EDGE_WEIGHTS[y]);
+    }
+    cudaFree(EDGE_WEIGHTS);
+}
 
 extern "C" void freeCuda(double* ptr){
     cudaFree(ptr);
