@@ -6,9 +6,7 @@
 
 module load xl_r spectrum-mpi cuda/11.2
 
+#mpirun -np 8 ./run-exe <number of colonies> <total ants> <iterations> <thread_count> <input file name>
 #mpirun --bind-to core --report-bindings -np 8 ./mpi-cuda-exe
-mpirun -np 8 ./mpi-cuda-exe 5 32 65 8
-mpirun -np 8 ./mpi-cuda-exe 5 32 66 8
-mpirun -np 8 ./mpi-cuda-exe 5 32 67 8
-mpirun -np 8 ./mpi-cuda-exe 5 32 68 8
-~                                      
+mpirun -np 8 ./run-exe 104 10 16 ../data/square.txt
+                                  
