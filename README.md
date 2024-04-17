@@ -1,5 +1,5 @@
 # Parallel-Ant-Colony-System
-Implementation of a the Ant Colony System optimization, using MPI and CUDA. Made to run on the AiMOS supercomputer.
+Implementation of the Ant Colony System optimization algorithm, using MPI and CUDA. Made to run on the AiMOS supercomputer.
 
 ## Background
 The ant colony optimization algorithm base unit of computation is called an ant. Like real world ants, an ant in the algorithm will explore a world (randomly), looking for rewards. In the algorithm the ant will look for a solution to an optimization problem. To apply an ant colony algorithm, the optimization problem needs to be converted into the problem of finding the shortest path on a weighted graph. Ants will leave pheromones to influence the exploration of other ants. The evaluation of the solution will decide how pheromones are preserved.
@@ -29,7 +29,9 @@ Trails are usually updated when all ants have completed their solution, increasi
 <br>
 (Source: Wikipedia)
 
+## Implemenation
 
+The code is written in C and CUDA. 
 
 
 
