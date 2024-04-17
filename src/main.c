@@ -9,11 +9,12 @@
 
 int * SEND_BUF = NULL;
 int * RECV_BUF = NULL;
+bool SEND_READY = false;
 
 // external cuda functions
-oid freeCudaGlobal(int num_ants);
-void setup_probelm_tsp(int myrank, int grid_size, int thread_count, double ** nodes, size_t num_coords);
-void colony_kernel_launch(size_t num_nodes, size_t num_ants, int block_count, int thread_count);
+void freeCudaGlobal(int num_ants);
+void setupProbelmTSP(int myrank, int grid_size, int thread_count, double ** nodes, size_t num_coords, size_t num_ants);
+void colonyKernelLaunch(size_t num_nodes, size_t num_ants, int block_count, int thread_count);
 
 // Creates array of coordinates from file. 
 // File should consist of comma separated values x,y per line per coordinates. No more than 128 characters per line
@@ -88,10 +89,10 @@ int main(int argc, char** argv) {
 	}
 
 	// extract parameters
-	if (argc != 6)
+	if (argc != 5)
 	{
-		printf("Incorrect number of provided parameters. %i\n", argc);
-		printf("Use -$ <number of colonies> <total ants> <iterations> <thread_count> <input file name> \n");
+		printf("Incorrect number of provided parameters: %i, expected 5.\n", argc);
+		printf("Use -$ <total ants> <iterations> <thread_count> <input file name> \n");
 		return 0;
 	}
 	unsigned int colonies = 0;
@@ -100,11 +101,11 @@ int main(int argc, char** argv) {
 	unsigned int thread_count = 0;
 	char * filename;
 
-	colonies = atoi(argv[1]);
-	total_ants = atoi(argv[2]);
-	iterations = atoi(argv[3]);
-	thread_count = atoi(argv[4]);
-	filename = argv[5];
+	colonies = numranks; // The number of colonies is the number of MPI ranks
+	total_ants = atoi(argv[1]);
+	iterations = atoi(argv[2]);
+	thread_count = atoi(argv[3]);
+	filename = argv[4];
 
 	// extract points from file and distribute to all ranks
 	size_t num_coords = 0;
@@ -128,11 +129,12 @@ int main(int argc, char** argv) {
 	MPI_Bcast(coords[1], num_coords, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 	MPI_Barrier(MPI_COMM_WORLD);
 
-	printf("%i | %lu | (%f, %f)\n", myrank, num_coords, coords[1][0], coords[1][1]);
+    printf("%i | %lu | (%f, %f)\n", myrank, num_coords, coords[0][0], coords[1][0]);
+    printf("%i | %lu | (%f, %f)\n", myrank, num_coords, coords[0][1], coords[1][1]);
 
 	// set up colony for this process (create ants, init pheromone trails)
 	int ants_per_colony = (total_ants + colonies - 1) / colonies;
-	setup_probelm_tsp(myrank, (ants_per_colony + thread_count - 1) / thread_count, thread_count, coords,  num_coords);
+	setupProbelmTSP(myrank, (ants_per_colony + thread_count - 1) / thread_count, thread_count, coords,  num_coords, ants_per_colony);
 
 	// set up MPI reception buffer for processing asynchronous communication
 	RECV_BUF = malloc(num_coords * sizeof(size_t));
