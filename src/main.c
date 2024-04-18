@@ -134,7 +134,7 @@ int main(int argc, char** argv) {
 
 	// set up colony for this process (create ants, init pheromone trails)
 	int ants_per_colony = (total_ants + colonies - 1) / colonies;
-	int blocks_per_grid = (ants_per_colony + thread_count - 1) / thread_count
+	int blocks_per_grid = (ants_per_colony + thread_count - 1) / thread_count;
 	setupProbelmTSP(myrank, blocks_per_grid, thread_count, coords,  num_coords, ants_per_colony);
 
 	// set up MPI reception buffer for processing asynchronous communication
@@ -147,8 +147,13 @@ int main(int argc, char** argv) {
 	for (int i = 0; i < iterations; ++i)
 	{
 		// launch kernel
-
+		colonyKernelLaunch(num_coords, ants_per_colony, blocks_per_grid, thread_count);
 		// check if new best solution is found
+		if (SEND_READY)
+		{
+			printf("Best best solution found at %i \n", myrank);
+			SEND_READY = false;
+		}
 
 		// distribute solution to other colonies
 	}

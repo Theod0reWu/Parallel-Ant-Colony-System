@@ -2,6 +2,7 @@
 #include<stdlib.h>
 #include<unistd.h>
 #include<stdbool.h>
+#include<string.h>
 
 #include<math.h>
 #include<float.h>
@@ -22,13 +23,13 @@ float BETA = 1;
 
 curandState* DEVSTATES;
 
-double ** EDGE_WEIGHTS;
+float ** EDGE_WEIGHTS;
 
-double ** PHER_TRAILS;
+float ** PHER_TRAILS;
 
-size_t ** VISITED;
+unsigned int ** VISITED;
 
-double * SCORES;
+float * SCORES;
 
 extern int ** SEND_BUF;
 
@@ -36,42 +37,47 @@ extern bool SEND_READY;
 
 extern int ** RECV_BUF;
 
-double BEST_SCORE = DBL_MAX_EXP;
+float BEST_SCORE = DBL_MAX_EXP;
 
 size_t NUM_NODES;
 size_t NUM_ANTS;
 
-double INIT_SMALL = .000001;
+float INIT_SMALL = 0; //.000001;
+float DECAY_RATE = .1;
 
-__device__ float generate(curandState* globalState, int ind)
+#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
+inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
+{
+   if (code != cudaSuccess) 
+   {
+      fprintf(stderr,"GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
+      if (abort) exit(code);
+   }
+}
+
+__device__ float generate(int ind, curandState* dev_states)
 {
     // int ind = threadIdx.x;
-    curandState localState = globalState[ind %  blockDim.x];
+    curandState localState = dev_states[ind];
     float RANDOM = curand_uniform( &localState );
-    globalState[ind] = localState;
+    dev_states[ind] = localState;
     return RANDOM;
 }
 
-__global__ void setupKernel ( curandState * state, unsigned long seed )
+float ** createAdjMatrix(size_t num_nodes)
 {
-    int id = threadIdx.x;
-    curand_init ( seed + id, id, 0, &state[id] );
-}
-
-double ** createAdjMatrix(size_t num_nodes)
-{
-    double **  m;
-    cudaMallocManaged(&m, num_nodes * sizeof(double*));
+    float **  m;
+    cudaMallocManaged(&m, num_nodes * sizeof(float*));
     for (int i = 0; i < num_nodes; ++i)
     {
-        cudaMallocManaged(&m[i], num_nodes * sizeof(double));
+        cudaMallocManaged(&m[i], num_nodes * sizeof(float));
     }
     return m;
 }
 
-double ** createEdgeWeightsTSP(double ** nodes, int num_nodes)
+float ** createEdgeWeightsTSP(float ** nodes, int num_nodes)
 {   
-    double **  weights = createAdjMatrix(num_nodes);
+    float **  weights = createAdjMatrix(num_nodes);
 
     for (int y = 0; y < num_nodes; ++y)
     {
@@ -83,9 +89,16 @@ double ** createEdgeWeightsTSP(double ** nodes, int num_nodes)
     return weights;
 }
 
+// initializes global memory for device 
+// inits curand
+__global__ void setupKernel(unsigned int seed, curandState* dev_states)
+{
+    int id = threadIdx.x;
+    curand_init ( seed + id, id, 0, &dev_states[id] );
+}
 
 // sets up the devices and runs
-extern "C" void setupProbelmTSP(int myrank, int grid_size, int thread_count, double ** nodes, size_t num_coords, size_t num_ants)
+extern "C" void setupProbelmTSP(int myrank, int grid_size, int thread_count, float ** nodes, size_t num_coords, size_t num_ants)
 {
     // Set device to the rank
     int cudaDeviceCount;
@@ -102,18 +115,20 @@ extern "C" void setupProbelmTSP(int myrank, int grid_size, int thread_count, dou
     }
 
     // setup random number generators
-    cudaMallocManaged (&DEVSTATES, thread_count * sizeof(curandState));
+    cudaMallocManaged (&DEVSTATES, grid_size * thread_count * sizeof(curandState));
     srand(time(0));
     int seed = rand() + myrank;
-    setupKernel<<<grid_size, thread_count>>>(DEVSTATES,seed);
+    setupKernel<<<1, thread_count>>>(seed, DEVSTATES);
+    cudaDeviceSynchronize();
 
+    // create adj matrix for edge weights and phermone trails
     EDGE_WEIGHTS = createEdgeWeightsTSP(nodes, num_coords);
     PHER_TRAILS = createAdjMatrix(num_coords);
     for (int i = 0; i < num_coords; ++i)
     {
         for (int e = 0; e < num_coords; ++e)
         {
-            PHER_TRAILS[i][e] = INIT_SMALL;
+            PHER_TRAILS[i][e] = 0;
         }
     }
 
@@ -124,24 +139,25 @@ extern "C" void setupProbelmTSP(int myrank, int grid_size, int thread_count, dou
     {
         cudaMallocManaged(&VISITED[i], num_coords * sizeof(size_t *));
     }
-    cudaMallocManaged(&SCORES, num_ants * sizeof(double));
+    cudaMallocManaged(&SCORES, num_ants * sizeof(float));
+
     NUM_NODES = num_coords;
     NUM_ANTS = num_ants;
 }
 
 // copy memory from device to host
-extern "C" void deviceToHost(double * device_pointer, double * host_pointer, unsigned int size)
+extern "C" void deviceToHost(float * device_pointer, float * host_pointer, unsigned int size)
 {
     cudaMemcpy(host_pointer, device_pointer, size, cudaMemcpyDeviceToHost);
 }
 
 // copy memory from host to device
-extern "C" void hostToDevice(double * host_pointer, double * device_pointer, unsigned int size)
+extern "C" void hostToDevice(float * host_pointer, float * device_pointer, unsigned int size)
 {
     cudaMemcpy(device_pointer, host_pointer, size, cudaMemcpyHostToDevice);
 }
 
-__device__ bool elementOf(size_t * visited, size_t size, size_t at)
+__device__ bool elementOf(unsigned int * visited, size_t size, size_t at)
 {
     for (int i = 0; i < size; ++i)
     {
@@ -155,17 +171,18 @@ __device__ bool elementOf(size_t * visited, size_t size, size_t at)
 
 // each thread will run an ant, who creates one solution to the TSP per ant.
 __global__ void colonyKernelTSP(
-    double ** pheromone_trails, 
-    double ** edge_weights,
-    size_t ** visited,  double * scores, 
-    size_t num_ants, size_t num_nodes, 
-    curandState* dev_states)
+    float ** pheromone_trails,
+    float ** edge_weights,
+    unsigned int ** visited, 
+    float * scores,
+    curandState* dev_states,
+    size_t num_ants, size_t num_nodes)
 {
     size_t index = blockIdx.x * blockDim.x + threadIdx.x;
 
-    for (; index < num_ants; index += blockDim.x)
+    for (; index < num_ants; index += blockDim.x * gridDim.x)
     {
-        double total = 0;
+        float total = 0;
         scores[index] = 0;
 
         // determine what node is next based on probability
@@ -174,7 +191,8 @@ __global__ void colonyKernelTSP(
             if (step == 0)
             {
                 // starting city is randomly assigned
-                int rand_index = (int) (generate(dev_states, index) * (num_nodes + 0.999999));
+                int rand_index = (int) (generate(threadIdx.x, dev_states) * ((num_nodes - 1) + 0.99));
+                // print("rand: %f\n",rand_index);
                 visited[index][0] = rand_index;
             } else {
                 // get the total score of all possible options
@@ -183,17 +201,19 @@ __global__ void colonyKernelTSP(
                 {
                     if (!elementOf(visited[index], step, node))
                     {
-                        total += pheromone_trails[visited[index][step]][node] * edge_weights[visited[index][step]][node];
+                        // printf("step-1: %i node: %i prev: %i index: %i\n", step-1, node, visited[index][step - 1], index);
+                        // printf("%f %f\n", pheromone_trails[visited[index][step - 1]][node], edge_weights[visited[index][step - 1]][node]);
+                        total += pheromone_trails[visited[index][step - 1]][node] * edge_weights[visited[index][step - 1]][node];
                     }
                 }
 
-                double rand = generate(dev_states, index) * total;
-                double running_sum = 0;
+                float rand = generate(threadIdx.x, dev_states) * total;
+                float running_sum = 0;
                 for (size_t node = 0; node < num_nodes; node++)
                 {
                     if (!elementOf(visited[index], step, node))
                     {
-                        running_sum += pheromone_trails[visited[index][step]][node] * edge_weights[visited[index][step]][node];
+                        running_sum += pheromone_trails[visited[index][step - 1]][node] * edge_weights[visited[index][step - 1]][node];
                         if (running_sum >= rand)
                         {
                             visited[index][step] = node;
@@ -210,12 +230,12 @@ __global__ void colonyKernelTSP(
 }
 
 
-void decayPheromones(double rho)
+void decayPheromones(float rho, size_t num_nodes)
 {
     // decay existing pheromones
-    for (int y = 0; y < NUM_NODES; y++)
+    for (int y = 0; y < num_nodes; y++)
     {
-        for (int x = 0; x < NUM_NODES; x++)
+        for (int x = 0; x < num_nodes; x++)
         {
             PHER_TRAILS[y][x] *= (1 - rho);
         }
@@ -225,11 +245,10 @@ void decayPheromones(double rho)
 // updates the pheromones based on the ant system (Dorigo et al. 1991, Dorigo 1992, Dorigo et al. 1996)
 // every ant updates the phermones based on their score
 __global__ void updatePheromoneTrailsAS(
-    double ** pheromone_trails, 
-    double ** edge_weights,
-    size_t ** visited,  double * scores, 
-    size_t num_ants, size_t num_nodes
-    )
+    float ** pheromone_trails,
+    unsigned int ** visited, 
+    float * scores,
+    size_t num_ants, size_t num_nodes)
 {
     size_t index = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -244,36 +263,19 @@ __global__ void updatePheromoneTrailsAS(
 
 //ant colony system (ACS), introduced by Dorigo and Gambardella (1997)
 __global__ void updatePheromoneTrailsACS(
-    double ** pheromone_trails, 
-    double ** edge_weights,
-    size_t ** visited,  double * scores, 
+    float ** pheromone_trails, 
+    float ** edge_weights,
+    unsigned int ** visited,  float * scores, 
     size_t num_ants, size_t num_nodes
     )
 {
     return;
 }
 
-void freeCudaAdjMatrix(double ** matrix) {
-    for (int y = 0; y < NUM_NODES; ++y)
-    {
-        cudaFree(matrix[y]);
-    }
-    cudaFree(matrix);
-}
-
-extern "C" void updatePheromones(int block_count, int thread_count, char update_rule)
+// returns the index of the ant with the best score
+size_t getBestAnt(size_t num_ants)
 {
-    
-}
-
-extern "C" void colonyKernelLaunch(size_t num_nodes, size_t num_ants, int block_count, int thread_count)
-{
-    // Launch the kernel
-    colonyKernelTSP<<<block_count,thread_count>>>(PHER_TRAILS, EDGE_WEIGHTS, VISITED, SCORES, num_ants, NUM_NODES, DEVSTATES);
-    cudaDeviceSynchronize();
-
-    // Calculate the best score and send if better than the best found
-    double best = DBL_MAX;
+    float best = DBL_MAX;
     size_t idx;
     for (int i = 0; i < num_ants; i++)
     {
@@ -283,8 +285,55 @@ extern "C" void colonyKernelLaunch(size_t num_nodes, size_t num_ants, int block_
             idx = i;
         }
     }
+    return idx;
+}
+
+void displayAdjMatrix(float ** matrix) {
+    for (int y = 0; y < NUM_NODES; ++y)
+    {
+        for (int x = 0; x < NUM_NODES; x++){
+            printf("%lf ", matrix[y][x]);
+        }
+        printf("\n");
+    }
+}
+
+void freeCudaAdjMatrix(float ** matrix) {
+    for (int y = 0; y < NUM_NODES; ++y)
+    {
+        cudaFree(matrix[y]);
+    }
+    cudaFree(matrix);
+}
+
+extern "C" void updatePheromones(int num_nodes, int block_count, int thread_count, char * update_rule)
+{
+    if (strcmp(update_rule, "AS") == 0)
+    {
+        decayPheromones(.9, num_nodes);
+        updatePheromoneTrailsAS<<<block_count, thread_count>>>(PHER_TRAILS, VISITED, SCORES, NUM_ANTS, NUM_NODES);
+        cudaDeviceSynchronize();
+    }
+    else if (strcmp(update_rule, "ACS") == 0)
+    {
+
+    }
+}
+
+extern "C" void colonyKernelLaunch(size_t num_nodes, size_t num_ants, int block_count, int thread_count)
+{
+    // Launch the kernel
+    colonyKernelTSP<<<block_count,thread_count>>>(PHER_TRAILS, EDGE_WEIGHTS, VISITED, SCORES, DEVSTATES, num_ants, NUM_NODES);
+    // cudaDeviceSynchronize();
+    gpuErrchk( cudaPeekAtLastError() );
+    gpuErrchk( cudaDeviceSynchronize() );
+
+    // Calculate the best score and send if better than the best found
+    size_t best_idx = getBestAnt(num_ants);
+    float best = SCORES[best_idx];
     if (best < BEST_SCORE)
     {
+        printf("Best score: %lf \n", best);
         BEST_SCORE = best;
         SEND_READY = true;
     }
@@ -301,6 +350,6 @@ extern "C" void freeCudaGlobal(int num_ants){
     cudaFree(SCORES);
 }
 
-extern "C" void freeCuda(double* ptr){
+extern "C" void freeCuda(float* ptr){
     cudaFree(ptr);
 }
