@@ -39,6 +39,7 @@ extern int ** RECV_BUF;
 double BEST_SCORE = DBL_MAX_EXP;
 
 size_t NUM_NODES;
+size_t NUM_ANTS;
 
 double INIT_SMALL = .000001;
 
@@ -125,6 +126,7 @@ extern "C" void setupProbelmTSP(int myrank, int grid_size, int thread_count, dou
     }
     cudaMallocManaged(&SCORES, num_ants * sizeof(double));
     NUM_NODES = num_coords;
+    NUM_ANTS = num_ants;
 }
 
 // copy memory from device to host
@@ -175,7 +177,7 @@ __global__ void colonyKernelTSP(
                 int rand_index = (int) (generate(dev_states, index) * (num_nodes + 0.999999));
                 visited[index][0] = rand_index;
             } else {
-                // get the total score
+                // get the total score of all possible options
                 total = 0;
                 for (size_t node = 0; node < num_nodes; node++)
                 {
@@ -198,17 +200,57 @@ __global__ void colonyKernelTSP(
                         }
                     }
                 }
-
-                // since the edge weights are 1 / distance.
+                // since the edge weights are 1 / distance, score is the sum of distances.
                 scores[index] += 1 / edge_weights[visited[index][step-1]][visited[index][step]];
             }
+        }
+        // add the distance from the last to first node
+        scores[index] += 1 / edge_weights[visited[index][num_nodes-1]][visited[index][0]];
+    }
+}
+
+
+void decayPheromones(double rho)
+{
+    // decay existing pheromones
+    for (int y = 0; y < NUM_NODES; y++)
+    {
+        for (int x = 0; x < NUM_NODES; x++)
+        {
+            PHER_TRAILS[y][x] *= (1 - rho);
         }
     }
 }
 
-void updatePhermoneTrails()
+// updates the pheromones based on the ant system (Dorigo et al. 1991, Dorigo 1992, Dorigo et al. 1996)
+// every ant updates the phermones based on their score
+__global__ void updatePheromoneTrailsAS(
+    double ** pheromone_trails, 
+    double ** edge_weights,
+    size_t ** visited,  double * scores, 
+    size_t num_ants, size_t num_nodes
+    )
 {
+    size_t index = blockIdx.x * blockDim.x + threadIdx.x;
 
+    for (; index < num_ants; index += blockDim.x)
+    {
+        for (size_t step = 0; step < num_nodes; step++)
+        {   
+            pheromone_trails[visited[index][(num_nodes + step - 1) % num_nodes]][visited[index][step]] += 1 / scores[index];
+        }
+    }
+}
+
+//ant colony system (ACS), introduced by Dorigo and Gambardella (1997)
+__global__ void updatePheromoneTrailsACS(
+    double ** pheromone_trails, 
+    double ** edge_weights,
+    size_t ** visited,  double * scores, 
+    size_t num_ants, size_t num_nodes
+    )
+{
+    return;
 }
 
 void freeCudaAdjMatrix(double ** matrix) {
@@ -219,9 +261,13 @@ void freeCudaAdjMatrix(double ** matrix) {
     cudaFree(matrix);
 }
 
+extern "C" void updatePheromones(int block_count, int thread_count, char update_rule)
+{
+    
+}
+
 extern "C" void colonyKernelLaunch(size_t num_nodes, size_t num_ants, int block_count, int thread_count)
 {
-
     // Launch the kernel
     colonyKernelTSP<<<block_count,thread_count>>>(PHER_TRAILS, EDGE_WEIGHTS, VISITED, SCORES, num_ants, NUM_NODES, DEVSTATES);
     cudaDeviceSynchronize();
@@ -242,9 +288,6 @@ extern "C" void colonyKernelLaunch(size_t num_nodes, size_t num_ants, int block_
         BEST_SCORE = best;
         SEND_READY = true;
     }
-
-    // update the pheromone trails
-    
 }
 
 extern "C" void freeCudaGlobal(int num_ants){
