@@ -134,7 +134,8 @@ int main(int argc, char** argv) {
 
 	// set up colony for this process (create ants, init pheromone trails)
 	int ants_per_colony = (total_ants + colonies - 1) / colonies;
-	setupProbelmTSP(myrank, (ants_per_colony + thread_count - 1) / thread_count, thread_count, coords,  num_coords, ants_per_colony);
+	int blocks_per_grid = (ants_per_colony + thread_count - 1) / thread_count
+	setupProbelmTSP(myrank, blocks_per_grid, thread_count, coords,  num_coords, ants_per_colony);
 
 	// set up MPI reception buffer for processing asynchronous communication
 	RECV_BUF = malloc(num_coords * sizeof(size_t));
@@ -145,7 +146,11 @@ int main(int argc, char** argv) {
 	// execution loop (cuda for processing), MPI for communicating best solutions
 	for (int i = 0; i < iterations; ++i)
 	{
-		
+		// launch kernel
+
+		// check if new best solution is found
+
+		// distribute solution to other colonies
 	}
 
 	// free memory
