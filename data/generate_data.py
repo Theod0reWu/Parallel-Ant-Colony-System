@@ -9,16 +9,25 @@ import tkinter
 
 from display_data import display
 
-def generate_points(num_points):
+# Generates points distributed on a disc of radius r, centered at (0,0)
+def generate_points_on_disc(num_points, radius = 5):
 	points=[]
-	radius = 5
 	for _ in range (num_points):
 		theta = random.uniform(0,2*math.pi)
 		r = random.uniform(0,radius)
 		x=round(r*math.cos(theta),1)
 		y=round(r*math.sin(theta),1)
 		points.append((x,y))
-	print(points)
+	return points
+
+def generate_points_on_circle(num_points, radius = 10):
+	points = []
+	theta_prime = 2 * math.pi / (num_points - 1)
+	for i in range(num_points):
+		theta = i * theta_prime
+		x=round(radius*math.cos(theta),1)
+		y=round(radius*math.sin(theta),1)
+		points.append((x,y))
 	return points
 
 def write_to_file(points,filename):
@@ -32,10 +41,10 @@ def write_to_file(points,filename):
 
 
 def main():
-	filename = "data.txt"
-	points = generate_points(10)
+	filename = sys.argv[1]
+	num_points = int(sys.argv[2])
+	points = generate_points_on_circle(num_points)
 	write_to_file(points,filename)
-	# display(sys.argv[1])
 
 if __name__ == '__main__':
 	main()
