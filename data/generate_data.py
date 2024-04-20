@@ -37,13 +37,19 @@ def write_to_file(points,filename):
 				f.write(f"{points[i][0]},{points[i][1]}\n")
 			else:
 				f.write(f"{points[i][0]},{points[i][1]}")
-			
-
 
 def main():
 	filename = sys.argv[1]
 	num_points = int(sys.argv[2])
-	points = generate_points_on_circle(num_points)
+	distribution = 'circle'
+	if (len(sys.argv) == 4):
+		distribution = sys.argv[3]
+
+	points = None
+	if (distribution == 'circle'):
+		points = generate_points_on_circle(num_points)
+	elif (distribution == 'disc'):
+		points = generate_points_on_disc(num_points)
 	write_to_file(points,filename)
 
 if __name__ == '__main__':
