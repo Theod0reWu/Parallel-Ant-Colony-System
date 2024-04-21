@@ -7,14 +7,15 @@
 #include <errno.h>
 #include <string.h>
 
-int * SEND_BUF = NULL;
-int * RECV_BUF = NULL;
+size_t * SEND_BUF = NULL;
+size_t * RECV_BUF = NULL;
 bool SEND_READY = false;
 
 // external cuda functions
 void freeCudaGlobal(int num_ants);
 void setupProbelmTSP(int myrank, int grid_size, int thread_count, double ** nodes, size_t num_coords, size_t num_ants);
 void colonyKernelLaunch(size_t num_nodes, size_t num_ants, int block_count, int thread_count);
+void updatePheromones(int num_nodes, int block_count, int thread_count, char * update_rule);
 
 // Creates array of coordinates from file. 
 // File should consist of comma separated values x,y per line per coordinates. No more than 128 characters per line
@@ -50,6 +51,16 @@ double ** interpret_file(char * filename)
     }
 
     return data;
+}
+
+void outputResults(char * filename, double ** coordss)
+{
+
+	FILE* ptr = fopen(filename, "r");
+	if (NULL == ptr) {
+        printf("file can't be opened \n");
+        return;
+    }
 }
 
 // gets the number of points in the file
@@ -129,8 +140,8 @@ int main(int argc, char** argv) {
 	MPI_Bcast(coords[1], num_coords, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 	MPI_Barrier(MPI_COMM_WORLD);
 
-    printf("%i | %lu | (%f, %f)\n", myrank, num_coords, coords[0][0], coords[1][0]);
-    printf("%i | %lu | (%f, %f)\n", myrank, num_coords, coords[0][1], coords[1][1]);
+    // printf("%i | %lu | (%f, %f)\n", myrank, num_coords, coords[0][0], coords[1][0]);
+    // printf("%i | %lu | (%f, %f)\n", myrank, num_coords, coords[0][1], coords[1][1]);
 
 	// set up colony for this process (create ants, init pheromone trails)
 	int ants_per_colony = (total_ants + colonies - 1) / colonies;
@@ -153,9 +164,21 @@ int main(int argc, char** argv) {
 		{
 			printf("Best best solution found at %i \n", myrank);
 			SEND_READY = false;
+
+			// distribute solution to other colonies
 		}
 
-		// distribute solution to other colonies
+		// update pheromones
+		updatePheromones(num_coords, blocks_per_grid, thread_count, "AS");
+	}
+
+	//output results
+	if (myrank == 0)
+	{
+		for (int i = 0; i < num_coords; i++)
+		{
+			printf("%lf,%lf\n", coords[0][SEND_BUF[i]], coords[1][SEND_BUF[i]]);
+		}
 	}
 
 	// free memory
