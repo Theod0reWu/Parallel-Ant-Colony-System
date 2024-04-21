@@ -3,6 +3,7 @@
 #include<unistd.h>
 #include<stdbool.h>
 #include<string.h>
+#include <time.h>
 
 #include<math.h>
 #include<limits.h>
@@ -10,31 +11,27 @@
 // Cuda libraries
 #include <cuda.h>
 #include <cuda_runtime.h>
-// Cuda random number generators
 #include <curand.h>
 #include <curand_kernel.h>
-
-#include <time.h>
-#include <stdlib.h>
 
 double ALPHA = 1;
 double BETA = 1;
 
+//Devstates for random number gen
 curandState* DEVSTATES;
 
+// adjacency matrices
 double ** EDGE_WEIGHTS;
-
 double ** PHER_TRAILS;
 
-unsigned int ** VISITED;
-
+//scores of device
+size_t ** VISITED;
 double * SCORES;
 
-extern int ** SEND_BUF;
-
+// external for MPI message passing
+extern size_t * SEND_BUF;
 extern bool SEND_READY;
-
-extern int ** RECV_BUF;
+extern size_t * RECV_BUF;
 
 double BEST_SCORE = -1;
 
@@ -53,6 +50,8 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
       if (abort) exit(code);
    }
 }
+
+void displayAdjMatrix(double ** matrix);
 
 __device__ double generate(int ind, curandState* dev_states)
 {
@@ -145,18 +144,18 @@ extern "C" void setupProbelmTSP(int myrank, int grid_size, int thread_count, dou
 }
 
 // copy memory from device to host
-extern "C" void deviceToHost(double * device_pointer, double * host_pointer, unsigned int size)
+extern "C" void deviceToHost(size_t * device_pointer, size_t * host_pointer, unsigned int size)
 {
-    cudaMemcpy(host_pointer, device_pointer, size, cudaMemcpyDeviceToHost);
+    cudaMemcpy(host_pointer, device_pointer, size * sizeof(size_t), cudaMemcpyDeviceToHost);
 }
 
 // copy memory from host to device
-extern "C" void hostToDevice(double * host_pointer, double * device_pointer, unsigned int size)
+extern "C" void hostToDevice(size_t * host_pointer, size_t * device_pointer, unsigned int size)
 {
     cudaMemcpy(device_pointer, host_pointer, size, cudaMemcpyHostToDevice);
 }
 
-__device__ bool elementOf(unsigned int * visited, size_t size, size_t at)
+__device__ bool elementOf(size_t * visited, size_t size, size_t at)
 {
     for (int i = 0; i < size; ++i)
     {
@@ -172,7 +171,7 @@ __device__ bool elementOf(unsigned int * visited, size_t size, size_t at)
 __global__ void colonyKernelTSP(
     double ** pheromone_trails,
     double ** edge_weights,
-    unsigned int ** visited, 
+    size_t ** visited, 
     double * scores,
     curandState* dev_states,
     size_t num_ants, size_t num_nodes)
@@ -245,7 +244,7 @@ void decayPheromones(double rho, size_t num_nodes)
 // every ant updates the phermones based on their score
 __global__ void updatePheromoneTrailsAS(
     double ** pheromone_trails,
-    unsigned int ** visited, 
+    size_t ** visited, 
     double * scores,
     size_t num_ants, size_t num_nodes)
 {
@@ -264,7 +263,7 @@ __global__ void updatePheromoneTrailsAS(
 __global__ void updatePheromoneTrailsACS(
     double ** pheromone_trails, 
     double ** edge_weights,
-    unsigned int ** visited,  double * scores, 
+    size_t ** visited,  double * scores, 
     size_t num_ants, size_t num_nodes
     )
 {
@@ -334,6 +333,9 @@ extern "C" void colonyKernelLaunch(size_t num_nodes, size_t num_ants, int block_
     {
         printf("Best score: %lf \n", best);
         BEST_SCORE = best;
+
+        // load the best route into send buffer, ready to send
+        deviceToHost(VISITED[best_idx], SEND_BUF, NUM_NODES);
         SEND_READY = true;
     }
 }
