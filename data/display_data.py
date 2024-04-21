@@ -18,7 +18,6 @@ def display_solution(fn):
 	plt.plot(x + [x[0]], y + [y[0]], linewidth = 1, linestyle='dotted', color = 'b')
 	plt.show()
 
-
 def display(fn):
 	x, y = get_data(fn)
 	plt.scatter(x, y)

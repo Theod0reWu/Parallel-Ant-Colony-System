@@ -22,7 +22,7 @@ def generate_points_on_disc(num_points, radius = 5):
 
 def generate_points_on_circle(num_points, radius = 10):
 	points = []
-	theta_prime = 2 * math.pi / (num_points - 1)
+	theta_prime = 2 * math.pi / (num_points)
 	for i in range(num_points):
 		theta = i * theta_prime
 		x=round(radius*math.cos(theta),1)
