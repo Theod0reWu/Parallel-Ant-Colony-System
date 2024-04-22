@@ -260,15 +260,28 @@ __global__ void updatePheromoneTrailsAS(
     }
 }
 
+double getScore(size_t * path, size_t num_nodes)
+{
+    double score = 0;
+    for (size_t step = 0; step < num_nodes; step++)
+    {
+        score += 1 / EDGE_WEIGHTS[path[(step-1 + num_nodes) % num_nodes]][path[step]];
+    }
+    return score;
+}
+
 //ant colony system (ACS), introduced by Dorigo and Gambardella (1997)
-__global__ void updatePheromoneTrailsACS(
+// only updates based on the best ant
+void updatePheromoneTrailsACS(
     double ** pheromone_trails, 
-    double ** edge_weights,
-    size_t ** visited,  double * scores, 
-    size_t num_ants, size_t num_nodes
+    size_t * path, size_t num_nodes,
+    double score
     )
 {
-    return;
+    for (size_t step = 0; step < num_nodes; step++)
+    {   
+        pheromone_trails[path[(num_nodes + step - 1) % num_nodes]][path[step]] += 1 / score;
+    }
 }
 
 // returns the index of the ant with the best score
@@ -305,17 +318,29 @@ void freeCudaAdjMatrix(double ** matrix) {
     cudaFree(matrix);
 }
 
-extern "C" void updatePheromones(int num_nodes, int block_count, int thread_count, char * update_rule)
+extern "C" void updatePheromones(int num_nodes, int block_count, int thread_count, char * update_rule, bool decay, double rho)
 {
+    if (decay)
+    {
+        decayPheromones(rho, NUM_NODES);
+    }
     if (strcmp(update_rule, "AS") == 0)
     {
-        decayPheromones(.1, num_nodes);
         updatePheromoneTrailsAS<<<block_count, thread_count>>>(PHER_TRAILS, VISITED, SCORES, NUM_ANTS, NUM_NODES);
         cudaDeviceSynchronize();
     }
     else if (strcmp(update_rule, "ACS") == 0)
     {
-
+        // go look for the best path then update based on that
+        updatePheromoneTrailsACS(PHER_TRAILS, SEND_BUF, NUM_NODES, 1);
+    }
+    else if (strcmp(update_rule, "MESSAGE") == 0)
+    {   
+        double path_score = getScore(RECV_BUF, NUM_NODES);
+        if (path_score > BEST_SCORE)
+        {
+            updatePheromoneTrailsACS(PHER_TRAILS, RECV_BUF, NUM_NODES, path_score);
+        }
     }
 }
 
