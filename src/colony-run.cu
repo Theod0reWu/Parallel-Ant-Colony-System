@@ -215,6 +215,7 @@ __global__ void colonyKernelTSP(
                         if (running_sum >= rand)
                         {
                             visited[index][step] = node;
+                            break; // found node stop looking
                         }
                     }
                 }
@@ -308,7 +309,7 @@ extern "C" void updatePheromones(int num_nodes, int block_count, int thread_coun
 {
     if (strcmp(update_rule, "AS") == 0)
     {
-        decayPheromones(.9, num_nodes);
+        decayPheromones(.1, num_nodes);
         updatePheromoneTrailsAS<<<block_count, thread_count>>>(PHER_TRAILS, VISITED, SCORES, NUM_ANTS, NUM_NODES);
         cudaDeviceSynchronize();
     }

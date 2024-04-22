@@ -53,13 +53,18 @@ double ** interpret_file(char * filename)
     return data;
 }
 
-void outputResults(char * filename, double ** coordss)
+void outputResults(char * filename, double ** coords, size_t num_coords, size_t * order)
 {
 
-	FILE* ptr = fopen(filename, "r");
-	if (NULL == ptr) {
+	FILE* fptr = fopen(filename, "w");
+	if (NULL == fptr) {
         printf("file can't be opened \n");
         return;
+    }
+
+    for (int i = 0; i < num_coords; i++)
+	{
+    	fprintf(fptr, "%lf,%lf\n", coords[0][order[i]], coords[1][order[i]]);
     }
 }
 
@@ -151,9 +156,10 @@ int main(int argc, char** argv) {
 	// set up MPI reception buffer for processing asynchronous communication
 	RECV_BUF = malloc(num_coords * sizeof(size_t));
 	SEND_BUF = malloc(num_coords * sizeof(size_t));
-	MPI_Request recv_request;
+	MPI_Request recv_request, send_request;
 	MPI_Irecv(RECV_BUF, num_coords, MPI_UNSIGNED_LONG, MPI_ANY_SOURCE,  MPI_ANY_TAG, MPI_COMM_WORLD, &recv_request);
 
+	MPI_Status stat;
 	// execution loop (cuda for processing), MPI for communicating best solutions
 	for (int i = 0; i < iterations; ++i)
 	{
@@ -165,7 +171,23 @@ int main(int argc, char** argv) {
 			printf("Best best solution found at %i \n", myrank);
 			SEND_READY = false;
 
-			// distribute solution to other colonies
+			// distribute solution to all other colonies
+			for (int rank = 0; rank < numranks; ++rank){
+				if (rank != myrank)
+				{
+					MPI_Isend(SEND_BUF, num_coords, MPI_UNSIGNED_LONG, rank, 'G', MPI_COMM_WORLD, &send_request);
+					MPI_Wait(&send_request, &stat);
+				}
+			}
+		}
+
+		//check if there are any messages waiting
+		int flag = 0;
+		MPI_Test(&recv_request, &flag, &stat);
+		if (flag)
+		{
+			// update pheromones based on recieved message
+			
 		}
 
 		// update pheromones
@@ -175,10 +197,12 @@ int main(int argc, char** argv) {
 	//output results
 	if (myrank == 0)
 	{
-		for (int i = 0; i < num_coords; i++)
-		{
-			printf("%lf,%lf\n", coords[0][SEND_BUF[i]], coords[1][SEND_BUF[i]]);
-		}
+		// for (int i = 0; i < num_coords; i++)
+		// {
+		// 	printf("%lf,%lf\n", coords[0][SEND_BUF[i]], coords[1][SEND_BUF[i]]);
+		// }
+
+		outputResults("output.txt", coords, num_coords, SEND_BUF);
 	}
 
 	// free memory
