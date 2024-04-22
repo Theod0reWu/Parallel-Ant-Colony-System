@@ -11,11 +11,13 @@ size_t * SEND_BUF = NULL;
 size_t * RECV_BUF = NULL;
 bool SEND_READY = false;
 
+double RHO = .1;
+
 // external cuda functions
 void freeCudaGlobal(int num_ants);
 void setupProbelmTSP(int myrank, int grid_size, int thread_count, double ** nodes, size_t num_coords, size_t num_ants);
 void colonyKernelLaunch(size_t num_nodes, size_t num_ants, int block_count, int thread_count);
-void updatePheromones(int num_nodes, int block_count, int thread_count, char * update_rule);
+void updatePheromones(int num_nodes, int block_count, int thread_count, char * update_rule, bool decay, double rho);
 
 // Creates array of coordinates from file. 
 // File should consist of comma separated values x,y per line per coordinates. No more than 128 characters per line
@@ -151,9 +153,6 @@ int main(int argc, char** argv) {
 	MPI_Bcast(coords[1], num_coords, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 	MPI_Barrier(MPI_COMM_WORLD);
 
-    // printf("%i | %lu | (%f, %f)\n", myrank, num_coords, coords[0][0], coords[1][0]);
-    // printf("%i | %lu | (%f, %f)\n", myrank, num_coords, coords[0][1], coords[1][1]);
-
 	// set up colony for this process (create ants, init pheromone trails)
 	int ants_per_colony = (total_ants + colonies - 1) / colonies;
 	int blocks_per_grid = (ants_per_colony + thread_count - 1) / thread_count;
@@ -170,8 +169,9 @@ int main(int argc, char** argv) {
 	// execution loop (cuda for processing), MPI for communicating best solutions
 	for (int i = 0; i < iterations; ++i)
 	{
-		// launch kernel
+		// launch kernel for one iteration
 		colonyKernelLaunch(num_coords, ants_per_colony, blocks_per_grid, thread_count);
+
 		// check if new best solution is found
 		if (SEND_READY)
 		{
@@ -182,12 +182,10 @@ int main(int argc, char** argv) {
 
 
 			// distribute solution to all other colonies
-
 			for (int rank = 0; rank < numranks; ++rank){
 				if (rank != myrank)
 				{
 					MPI_Isend(SEND_BUF, num_coords, MPI_UNSIGNED_LONG, rank, 'G', MPI_COMM_WORLD, &send_request);
-					MPI_Wait(&send_request, &stat);
 				}
 			}
 		}
@@ -197,12 +195,15 @@ int main(int argc, char** argv) {
 		MPI_Test(&recv_request, &flag, &stat);
 		if (flag)
 		{
-			// update pheromones based on recieved message	
+			// update pheromones based on recieved message
+			updatePheromones(num_coords, blocks_per_grid, thread_count, "MESSAGE", false, RHO);
+
+			// post another recieve request
+			MPI_Irecv(RECV_BUF, num_coords, MPI_UNSIGNED_LONG, MPI_ANY_SOURCE,  MPI_ANY_TAG, MPI_COMM_WORLD, &recv_request);
 		}
 		// update pheromones
-		updatePheromones(num_coords, blocks_per_grid, thread_count, "AS");
+		updatePheromones(num_coords, blocks_per_grid, thread_count, "AS", true, RHO);
 	}
-
 	// fclose(text_file);
 
 	// free(buffer);
@@ -221,6 +222,10 @@ int main(int argc, char** argv) {
 	
 
 	MPI_File_write_at_all(file, offset, SEND_BUF, num_coords, MPI_UNSIGNED_LONG, MPI_STATUS_IGNORE);
+
+	// synchronize ranks
+	MPI_Barrier( MPI_COMM_WORLD );
+
 
 	//output results
 	if (myrank == 0)
