@@ -86,6 +86,21 @@ size_t get_num_points(char * filename)
     return size;
 }
 
+void outputBestRoute(int rank, size_t *bestRoutes, size_t numCoords, int numProcesses, double** coords){
+	if (rank == 0) {
+        FILE *file = fopen("all_best_routes.txt", "w"); 
+        if (file == NULL) {
+            printf("Error opening file for writing.\n");
+            return;
+        }
+        // Write the best routes from all processes to the file
+        for (int i = 0; i < numCoords; i++) {
+            fprintf(file, "%lf, %lf ", coords[0][bestRoutes[i]],  coords[1][bestRoutes[i]]); 
+        }
+        fclose(file); // Close the file
+    }
+}
+
 int main(int argc, char** argv) {
 	// MPI STUFF 
 	// setput MPI
@@ -98,6 +113,10 @@ int main(int argc, char** argv) {
 	// Get the rank of the process
 	int myrank;
 	MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+
+	MPI_Offset offset = sizeof(size_t)*numranks;
+	MPI_File file;
+	MPI_File_open(MPI_COMM_WORLD, "result.txt",  MPI_MODE_CREATE|MPI_MODE_WRONLY,MPI_INFO_NULL, &file);
 
 	double t0, t1;
 	if(myrank == 0){
@@ -194,9 +213,15 @@ int main(int argc, char** argv) {
 		updatePheromones(num_coords, blocks_per_grid, thread_count, "AS");
 	}
 
+	MPI_File_seek(file,offset,MPI_SEEK_SET);
+	// MPI_File_write(file,SEND_BUF,sizeof(size_t),MPI_DOUBLE,&status);
+	// MPI_File_close(&file);
+
+	size_t *gatheredRoutes = NULL;
 	//output results
 	if (myrank == 0)
 	{
+		gatheredRoutes = (size_t *)malloc(sizeof(size_t)*num_coords*numranks);
 		// for (int i = 0; i < num_coords; i++)
 		// {
 		// 	printf("%lf,%lf\n", coords[0][SEND_BUF[i]], coords[1][SEND_BUF[i]]);
@@ -204,6 +229,10 @@ int main(int argc, char** argv) {
 
 		outputResults("output.txt", coords, num_coords, SEND_BUF);
 	}
+
+	MPI_Gather(SEND_BUF, num_coords, MPI_UNSIGNED_LONG, gatheredRoutes, num_coords, MPI_UNSIGNED_LONG, 0, MPI_COMM_WORLD);
+
+	outputBestRoute(myrank, gatheredRoutes, num_coords, numranks,coords);
 
 	// free memory
 	free(coords[0]);
