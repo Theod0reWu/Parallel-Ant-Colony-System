@@ -29,9 +29,27 @@ Trails are usually updated when all ants have completed their solution, increasi
 <br>
 (Source: Wikipedia)
 
-## Implemenation
+## Input file format
+Each line of the input file should contain a coordinate in the form:
+```
+<float>,<float>
+```
+This represents a node in the TSP and distances between nodes are calculated as the euclidean distance. 
 
-The code is written in C and CUDA. 
+## Implementation details
+
+The code is written in C with MPI and CUDA. Each MPI rank will host its own colony consisting of an equal number of ants. Each iterations is run with CUDA to process its ants.
+
+## Compilation and Execution
+
+Using the makefile to compile. Compile with:
+```
+-$ make
+```
+This will generate an executable in the batch folder. To run see below of use the batch file:
+```
+-$ mpirun -np <mpi ranks> ../batch/run-exe <number of ants> <iterations> <threads per block> <path to input data>
+```
 
 
 
