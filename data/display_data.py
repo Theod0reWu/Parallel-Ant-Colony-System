@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
 import sys
 
+line_color = 'b'
+
 def get_data(fn):
 	data = []
 	with open(fn) as f:
@@ -18,7 +20,7 @@ def display_solution(fn):
 	plt.scatter(x, y)
 	xl = x + [x[0]]
 	yl = y + [y[0]]
-	plt.plot(xl, yl, linewidth = 1, linestyle='dotted', color = 'b')
+	plt.plot(xl, yl, linewidth = 1, linestyle='dotted', color = line_color)
 
 	total = 0
 	for i in range(len(x)):

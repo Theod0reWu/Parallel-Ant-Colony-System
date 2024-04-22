@@ -2,8 +2,6 @@ import sys
 import math
 import random
 
-import sys
-
 # Generates points distributed on a disc of radius r, centered at (0,0)
 def generate_points_on_disc(num_points, radius = 50):
 	points=[]
