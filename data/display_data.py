@@ -13,9 +13,21 @@ def get_data(fn):
 	return x, y
 
 def display_solution(fn):
+	fig, ax = plt.subplots()
 	x, y = get_data(fn)
 	plt.scatter(x, y)
-	plt.plot(x + [x[0]], y + [y[0]], linewidth = 1, linestyle='dotted', color = 'b')
+	xl = x + [x[0]]
+	yl = y + [y[0]]
+	plt.plot(xl, yl, linewidth = 1, linestyle='dotted', color = 'b')
+
+	total = 0
+	for i in range(len(x)):
+		total += ((xl[i] - xl[i+1]) ** 2 + (yl[i] - yl[i+1]) ** 2) ** .5
+	print("total score:", total)
+
+	for i, txt in enumerate([i for i in range(len(x))]):
+		ax.annotate(txt, (x[i], y[i]))
+
 	plt.show()
 
 def display(fn):

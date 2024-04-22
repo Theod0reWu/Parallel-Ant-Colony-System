@@ -1,16 +1,11 @@
-import matplotlib.pyplot as plt
-import numpy as np
 import sys
 import math
 import random
 
 import sys
-import tkinter
-
-from display_data import display
 
 # Generates points distributed on a disc of radius r, centered at (0,0)
-def generate_points_on_disc(num_points, radius = 5):
+def generate_points_on_disc(num_points, radius = 50):
 	points=[]
 	for _ in range (num_points):
 		theta = random.uniform(0,2*math.pi)
