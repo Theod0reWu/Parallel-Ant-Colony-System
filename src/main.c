@@ -11,13 +11,11 @@ size_t * SEND_BUF = NULL;
 size_t * RECV_BUF = NULL;
 bool SEND_READY = false;
 
-double RHO = .1;
-
 // external cuda functions
 void freeCudaGlobal(int num_ants);
 void setupProbelmTSP(int myrank, int grid_size, int thread_count, double ** nodes, size_t num_coords, size_t num_ants);
 void colonyKernelLaunch(size_t num_nodes, size_t num_ants, int block_count, int thread_count);
-void updatePheromones(int num_nodes, int block_count, int thread_count, char * update_rule, bool decay, double rho);
+void updatePheromones(int num_nodes, int block_count, int thread_count, char * update_rule);
 
 // Creates array of coordinates from file. 
 // File should consist of comma separated values x,y per line per coordinates. No more than 128 characters per line
@@ -88,19 +86,9 @@ size_t get_num_points(char * filename)
     return size;
 }
 
-void outputBestRoute(int rank, size_t *bestRoutes, size_t numCoords, int numProcesses, double** coords){
-	if (rank == 0) {
-        FILE *file = fopen("all_best_routes.txt", "w"); 
-        if (file == NULL) {
-            printf("Error opening file for writing.\n");
-            return;
-        }
-        // Write the best routes from all processes to the file
-        for (int i = 0; i < numCoords; i++) {
-            fprintf(file, "%lf, %lf ", coords[0][bestRoutes[i]],  coords[1][bestRoutes[i]]); 
-        }
-        fclose(file); // Close the file
-    }
+void outputBestRoute(MPI_File file, size_t *solution, size_t num_coords, size_t myrank){
+	MPI_Offset offset = myrank*num_coords*sizeof(size_t);
+	MPI_File_write_at_all(file, offset, solution, num_coords, MPI_UNSIGNED_LONG, MPI_STATUS_IGNORE);
 }
 
 int main(int argc, char** argv) {
@@ -116,10 +104,10 @@ int main(int argc, char** argv) {
 	int myrank;
 	MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
 
-	MPI_Offset offset = sizeof(size_t)*numranks;
+	// MPI_Offset offset = sizeof(size_t)*numranks;
 	MPI_File file;
 	MPI_File_open(MPI_COMM_WORLD, "result.txt",  MPI_MODE_CREATE|MPI_MODE_WRONLY,MPI_INFO_NULL, &file);
-
+	
 	double t0, t1;
 	if(myrank == 0){
 		t0 = MPI_Wtime();
@@ -166,6 +154,9 @@ int main(int argc, char** argv) {
 	MPI_Bcast(coords[1], num_coords, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 	MPI_Barrier(MPI_COMM_WORLD);
 
+    // printf("%i | %lu | (%f, %f)\n", myrank, num_coords, coords[0][0], coords[1][0]);
+    // printf("%i | %lu | (%f, %f)\n", myrank, num_coords, coords[0][1], coords[1][1]);
+
 	// set up colony for this process (create ants, init pheromone trails)
 	int ants_per_colony = (total_ants + colonies - 1) / colonies;
 	int blocks_per_grid = (ants_per_colony + thread_count - 1) / thread_count;
@@ -181,21 +172,20 @@ int main(int argc, char** argv) {
 	// execution loop (cuda for processing), MPI for communicating best solutions
 	for (int i = 0; i < iterations; ++i)
 	{
-		// launch kernel for one iteration
+		// launch kernel
 		colonyKernelLaunch(num_coords, ants_per_colony, blocks_per_grid, thread_count);
-
 		// check if new best solution is found
 		if (SEND_READY)
 		{
 			printf("Best best solution found at %i \n", myrank);
 			SEND_READY = false;
-
+			
 			// distribute solution to all other colonies
-			// potentially other methods to distribute only certain colonies
 			for (int rank = 0; rank < numranks; ++rank){
 				if (rank != myrank)
 				{
 					MPI_Isend(SEND_BUF, num_coords, MPI_UNSIGNED_LONG, rank, 'G', MPI_COMM_WORLD, &send_request);
+					MPI_Wait(&send_request, &stat);
 				}
 			}
 		}
@@ -206,23 +196,37 @@ int main(int argc, char** argv) {
 		if (flag)
 		{
 			// update pheromones based on recieved message
-			updatePheromones(num_coords, blocks_per_grid, thread_count, "MESSAGE", false, RHO);
-
-			// post another recieve request
-			MPI_Irecv(RECV_BUF, num_coords, MPI_UNSIGNED_LONG, MPI_ANY_SOURCE,  MPI_ANY_TAG, MPI_COMM_WORLD, &recv_request);
+			
 		}
 
 		// update pheromones
-		updatePheromones(num_coords, blocks_per_grid, thread_count, "AS", true, RHO);
+		updatePheromones(num_coords, blocks_per_grid, thread_count, "AS");
 	}
 
-	// synchronize ranks
-	MPI_Barrier( MPI_COMM_WORLD );
+	// MPI_File_seek(file,offset,MPI_SEEK_SET);
+	// MPI_File_write(file,SEND_BUF,sizeof(size_t),MPI_DOUBLE,&status);
+	// MPI_File_close(&file);
+	outputBestRoute(file,SEND_BUF,num_coords,myrank);
 
-	// synchronize ranks
-	MPI_Barrier( MPI_COMM_WORLD );
+	MPI_Offset filesize;
+	MPI_File_get_size(file,&filesize);
+	int* buffer = (int*)malloc(filesize);
 
+	MPI_Status status;
+	int ierr = MPI_File_read(file, buffer, filesize, MPI_BYTE, &status);
 
+	MPI_File_close(&file);
+
+	FILE* text_file = fopen("output.txt", "w");
+	for (int i = 0; i < filesize / sizeof(int); i++) {
+			fprintf(text_file, "%d\n", buffer[i]);
+		}
+
+	fclose(text_file);
+
+	free(buffer);
+
+	size_t *gatheredRoutes = NULL;
 	//output results
 	if (myrank == 0)
 	{
@@ -235,9 +239,7 @@ int main(int argc, char** argv) {
 		outputResults("output.txt", coords, num_coords, SEND_BUF);
 	}
 
-	MPI_Gather(SEND_BUF, num_coords, MPI_UNSIGNED_LONG, gatheredRoutes, num_coords, MPI_UNSIGNED_LONG, 0, MPI_COMM_WORLD);
 
-	outputBestRoute(myrank, gatheredRoutes, num_coords, numranks,coords);
 
 	// free memory
 	free(coords[0]);
