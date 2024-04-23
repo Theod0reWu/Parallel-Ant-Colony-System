@@ -86,10 +86,7 @@ size_t get_num_points(char * filename)
     return size;
 }
 
-void outputBestRoute(MPI_File file, size_t *solution, size_t num_coords, size_t myrank){
-	MPI_Offset offset = myrank*num_coords*sizeof(size_t);
-	MPI_File_write_at_all(file, offset, solution, num_coords, MPI_UNSIGNED_LONG, MPI_STATUS_IGNORE);
-}
+
 
 int main(int argc, char** argv) {
 	// MPI STUFF 
@@ -104,7 +101,7 @@ int main(int argc, char** argv) {
 	int myrank;
 	MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
 
-	// MPI_Offset offset = sizeof(size_t)*numranks;
+	// MPI IO file
 	MPI_File file;
 	MPI_File_open(MPI_COMM_WORLD, "result.txt",  MPI_MODE_CREATE|MPI_MODE_WRONLY,MPI_INFO_NULL, &file);
 	
@@ -180,7 +177,13 @@ int main(int argc, char** argv) {
 			printf("Best best solution found at %i \n", myrank);
 			SEND_READY = false;
 			
+
+			// calculate the offset for each rank
+			MPI_Offset offset = myrank*num_coords * sizeof(size_t);
+    		MPI_File_write_at_all(file, offset, SEND_BUF, num_coords, MPI_UNSIGNED_LONG, MPI_STATUS_IGNORE);
+
 			// distribute solution to all other colonies
+
 			for (int rank = 0; rank < numranks; ++rank){
 				if (rank != myrank)
 				{
@@ -195,42 +198,20 @@ int main(int argc, char** argv) {
 		MPI_Test(&recv_request, &flag, &stat);
 		if (flag)
 		{
-			// update pheromones based on recieved message
-			
+			// update pheromones based on recieved message	
 		}
-
 		// update pheromones
 		updatePheromones(num_coords, blocks_per_grid, thread_count, "AS");
 	}
 
-	// MPI_File_seek(file,offset,MPI_SEEK_SET);
-	// MPI_File_write(file,SEND_BUF,sizeof(size_t),MPI_DOUBLE,&status);
-	// MPI_File_close(&file);
-	outputBestRoute(file,SEND_BUF,num_coords,myrank);
-
-	MPI_Offset filesize;
-	MPI_File_get_size(file,&filesize);
-	int* buffer = (int*)malloc(filesize);
-
-	MPI_Status status;
-	int ierr = MPI_File_read(file, buffer, filesize, MPI_BYTE, &status);
-
+	// fclose(text_file);
 	MPI_File_close(&file);
 
-	FILE* text_file = fopen("output.txt", "w");
-	for (int i = 0; i < filesize / sizeof(int); i++) {
-			fprintf(text_file, "%d\n", buffer[i]);
-		}
+	// free(buffer);
 
-	fclose(text_file);
-
-	free(buffer);
-
-	size_t *gatheredRoutes = NULL;
 	//output results
 	if (myrank == 0)
 	{
-		gatheredRoutes = (size_t *)malloc(sizeof(size_t)*num_coords*numranks);
 		// for (int i = 0; i < num_coords; i++)
 		// {
 		// 	printf("%lf,%lf\n", coords[0][SEND_BUF[i]], coords[1][SEND_BUF[i]]);
@@ -238,8 +219,6 @@ int main(int argc, char** argv) {
 
 		outputResults("output.txt", coords, num_coords, SEND_BUF);
 	}
-
-
 
 	// free memory
 	free(coords[0]);
