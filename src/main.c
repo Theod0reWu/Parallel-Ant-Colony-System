@@ -88,6 +88,8 @@ size_t get_num_points(char * filename)
     return size;
 }
 
+
+
 int main(int argc, char** argv) {
 	// MPI STUFF 
 	// setput MPI
@@ -101,9 +103,13 @@ int main(int argc, char** argv) {
 	int myrank;
 	MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
 
+	MPI_File file;
+	MPI_File_open(MPI_COMM_WORLD, "result.txt",  MPI_MODE_CREATE|MPI_MODE_WRONLY,MPI_INFO_NULL, &file);
+	
 	double t0, t1;
 	if(myrank == 0){
 		t0 = MPI_Wtime();
+		MPI_File_write_at(file, 0, &t0, 1, MPI_DOUBLE, MPI_STATUS_IGNORE);
 	}
 
 	// extract parameters
@@ -159,6 +165,7 @@ int main(int argc, char** argv) {
 	MPI_Irecv(RECV_BUF, num_coords, MPI_UNSIGNED_LONG, MPI_ANY_SOURCE,  MPI_ANY_TAG, MPI_COMM_WORLD, &recv_request);
 
 	MPI_Status stat;
+	printf("rank: %d\n",myrank);
 	// execution loop (cuda for processing), MPI for communicating best solutions
 	for (int i = 0; i < iterations; ++i)
 	{
@@ -170,9 +177,11 @@ int main(int argc, char** argv) {
 		{
 			printf("Best best solution found at %i \n", myrank);
 			SEND_READY = false;
+			
+			// writeResults(file,SEND_BUF, num_coords, myrank);
+
 
 			// distribute solution to all other colonies
-			// potentially other methods to distribute only certain colonies
 			for (int rank = 0; rank < numranks; ++rank){
 				if (rank != myrank)
 				{
@@ -192,13 +201,31 @@ int main(int argc, char** argv) {
 			// post another recieve request
 			MPI_Irecv(RECV_BUF, num_coords, MPI_UNSIGNED_LONG, MPI_ANY_SOURCE,  MPI_ANY_TAG, MPI_COMM_WORLD, &recv_request);
 		}
-
 		// update pheromones
 		updatePheromones(num_coords, blocks_per_grid, thread_count, "AS", true, RHO);
 	}
+	// fclose(text_file);
+
+	// free(buffer);
+	MPI_Offset offset;
+
+	if(myrank == 0){
+		offset = num_coords* sizeof(size_t);
+	}else{
+		offset = myrank*num_coords* sizeof(size_t);
+	}
+
+	for(int j = 0; j < num_coords; j++){
+		// fprintf(file,"%zu", *(SEND_BUF+j));
+		printf("send buf: %zu\n",*(SEND_BUF+j));
+	}
+	
+
+	MPI_File_write_at_all(file, offset, SEND_BUF, num_coords, MPI_UNSIGNED_LONG, MPI_STATUS_IGNORE);
 
 	// synchronize ranks
 	MPI_Barrier( MPI_COMM_WORLD );
+
 
 	//output results
 	if (myrank == 0)
@@ -207,9 +234,15 @@ int main(int argc, char** argv) {
 		// {
 		// 	printf("%lf,%lf\n", coords[0][SEND_BUF[i]], coords[1][SEND_BUF[i]]);
 		// }
+		offset += num_coords*(sizeof(double));
+		t1 = MPI_Wtime();
 
+		MPI_File_write_at(file, offset, &t1, 1, MPI_DOUBLE, MPI_STATUS_IGNORE);
 		outputResults("output.txt", coords, num_coords, SEND_BUF);
 	}
+
+
+	MPI_File_close(&file);
 
 	// free memory
 	free(coords[0]);
