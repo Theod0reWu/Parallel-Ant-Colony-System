@@ -58,9 +58,9 @@ This will generate an executable in the batch folder. To run see below or use th
 ```
 
 ## Results
-This path was generated created with 256 ants in 2 colonies:
+This path was generated created with 256 ants in 2 colonies at 10 iterations:
 ![image](https://github.com/Theod0reWu/Parallel-Ant-Colony-System/assets/43049406/bfcd0dcf-17ce-4141-86ad-a84ec943d9d3)
 
-More intensive training yielded promising results. The image below shows the results of 512 ants in 8 colonies. There were 1000 points arrange in a circle:
+More intensive training yielded promising results. The image below shows the results of 512 ants in 8 colonies for 10 iterations. There were 1000 points arrange in a circle:
 ![image](https://github.com/Theod0reWu/Parallel-Ant-Colony-System/assets/43049406/b89c98f7-9fe7-4d31-a967-5ab9cfb512e8)
 
