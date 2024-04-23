@@ -34,7 +34,11 @@ Each line of the input file should contain a coordinate in the form:
 ```
 <float>,<float>
 ```
-This represents a node in the TSP and distances between nodes are calculated as the euclidean distance. 
+This represents a node in the TSP and distances between nodes are calculated as the euclidean distance. <br>
+In data, generate_data.py can be used to create an input file:
+```
+-$ generate_data.py <file name> <number of points> <disc or circle>
+```
 
 ## Implementation details
 
@@ -42,14 +46,21 @@ The code is written in C with MPI and CUDA. Each MPI rank will host its own colo
 
 ## Compilation and Execution
 
-Using the makefile to compile. Compile with:
+Using the makefile to compile. You need to have spectrum MPI and at least cuda 11.0 
+<br>
+Compile with:
 ```
 -$ make
 ```
-This will generate an executable in the batch folder. To run see below of use the batch file:
+This will generate an executable in the batch folder. To run see below or use the batch file:
 ```
 -$ mpirun -np <mpi ranks> ../batch/run-exe <number of ants> <iterations> <threads per block> <path to input data>
 ```
 
+## Results
+This path was generated created with 256 ants in 2 colonies:
+![image](https://github.com/Theod0reWu/Parallel-Ant-Colony-System/assets/43049406/bfcd0dcf-17ce-4141-86ad-a84ec943d9d3)
 
+More intensive training yielded promising results. The image below shows the results of 512 ants in 8 colonies. There were 1000 points arrange in a circle:
+![image](https://github.com/Theod0reWu/Parallel-Ant-Colony-System/assets/43049406/b89c98f7-9fe7-4d31-a967-5ab9cfb512e8)
 
