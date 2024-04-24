@@ -165,7 +165,7 @@ int main(int argc, char** argv) {
 	MPI_Irecv(RECV_BUF, num_coords, MPI_UNSIGNED_LONG, MPI_ANY_SOURCE,  MPI_ANY_TAG, MPI_COMM_WORLD, &recv_request);
 
 	MPI_Status stat;
-	printf("rank: %d\n",myrank);
+
 	// execution loop (cuda for processing), MPI for communicating best solutions
 	for (int i = 0; i < iterations; ++i)
 	{
@@ -178,9 +178,6 @@ int main(int argc, char** argv) {
 			printf("Best best solution found at %i \n", myrank);
 			SEND_READY = false;
 			
-			// writeResults(file,SEND_BUF, num_coords, myrank);
-
-
 			// distribute solution to all other colonies
 			for (int rank = 0; rank < numranks; ++rank){
 				if (rank != myrank)
@@ -204,43 +201,24 @@ int main(int argc, char** argv) {
 		// update pheromones
 		updatePheromones(num_coords, blocks_per_grid, thread_count, "AS", true, RHO);
 	}
-	// fclose(text_file);
 
-	// free(buffer);
+	// synchronize ranks before writing
+	MPI_Barrier( MPI_COMM_WORLD );
+
 	MPI_Offset offset;
-
-	if(myrank == 0){
-		offset = num_coords* sizeof(size_t);
-	}else{
-		offset = myrank*num_coords* sizeof(size_t);
-	}
-
-	for(int j = 0; j < num_coords; j++){
-		// fprintf(file,"%zu", *(SEND_BUF+j));
-		printf("send buf: %zu\n",*(SEND_BUF+j));
-	}
-	
-
+	offset = myrank*num_coords* sizeof(size_t);
 	MPI_File_write_at_all(file, offset, SEND_BUF, num_coords, MPI_UNSIGNED_LONG, MPI_STATUS_IGNORE);
 
 	// synchronize ranks
 	MPI_Barrier( MPI_COMM_WORLD );
 
-
 	//output results
 	if (myrank == 0)
 	{
-		// for (int i = 0; i < num_coords; i++)
-		// {
-		// 	printf("%lf,%lf\n", coords[0][SEND_BUF[i]], coords[1][SEND_BUF[i]]);
-		// }
-		offset += num_coords*(sizeof(double));
 		t1 = MPI_Wtime();
-
-		MPI_File_write_at(file, offset, &t1, 1, MPI_DOUBLE, MPI_STATUS_IGNORE);
+		printf("time elapsed: %lf\n", t1 - t0);
 		outputResults("output.txt", coords, num_coords, SEND_BUF);
 	}
-
 
 	MPI_File_close(&file);
 
