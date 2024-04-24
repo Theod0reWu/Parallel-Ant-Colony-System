@@ -7,6 +7,8 @@
 #include <errno.h>
 #include <string.h>
 
+#include "clockcycle.h"
+
 size_t * SEND_BUF = NULL;
 size_t * RECV_BUF = NULL;
 bool SEND_READY = false;
@@ -112,6 +114,9 @@ int main(int argc, char** argv) {
 		MPI_File_write_at(file, 0, &t0, 1, MPI_DOUBLE, MPI_STATUS_IGNORE);
 	}
 
+	// clock cycle count at the start
+	uint64_t start_count = clock_now();
+
 	// extract parameters
 	if (argc != 5)
 	{
@@ -205,6 +210,9 @@ int main(int argc, char** argv) {
 	// synchronize ranks before writing
 	MPI_Barrier( MPI_COMM_WORLD );
 
+	// get the cycle count now
+	uint64_t after_loop = clock_now();
+
 	MPI_Offset offset;
 	offset = myrank*num_coords* sizeof(size_t);
 	MPI_File_write_at_all(file, offset, SEND_BUF, num_coords, MPI_UNSIGNED_LONG, MPI_STATUS_IGNORE);
@@ -212,12 +220,19 @@ int main(int argc, char** argv) {
 	// synchronize ranks
 	MPI_Barrier( MPI_COMM_WORLD );
 
+	uint64_t after_output = clock_now();
+
 	//output results
 	if (myrank == 0)
 	{
 		t1 = MPI_Wtime();
 		printf("time elapsed: %lf\n", t1 - t0);
 		outputResults("output.txt", coords, num_coords, SEND_BUF);
+
+		printf("cycle count start: %lu\n", start_count);
+		printf("cycle counts for main loop: %lu\n", after_loop - start_count);
+		printf("cycle counts for parallel io: %lu\n", after_output - after_loop);
+		printf("total cycle count: %lu\n", after_output - start_count);
 	}
 
 	MPI_File_close(&file);
