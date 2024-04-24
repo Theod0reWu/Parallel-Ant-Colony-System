@@ -14,7 +14,7 @@ def get_data(fn):
 		y.append(float(point[1]))
 	return x, y
 
-def display_solution(fn):
+def display_solution(fn, label_points = True):
 	fig, ax = plt.subplots()
 	x, y = get_data(fn)
 	plt.scatter(x, y)
@@ -27,8 +27,9 @@ def display_solution(fn):
 		total += ((xl[i] - xl[i+1]) ** 2 + (yl[i] - yl[i+1]) ** 2) ** .5
 	print("total score:", total)
 
-	for i, txt in enumerate([i for i in range(len(x))]):
-		ax.annotate(txt, (x[i], y[i]))
+	if (label_points):
+		for i, txt in enumerate([i for i in range(len(x))]):
+			ax.annotate(txt, (x[i], y[i]))
 
 	plt.show()
 
